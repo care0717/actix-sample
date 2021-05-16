@@ -9,6 +9,9 @@ edition = "2018"
 [dependencies]
 yew = "0.17"
 wasm-bindgen = "0.2"
+anyhow = "1.0"
+serde = { version = "1.0.125", features = ["derive"] }
+chrono = { version = "0.4.19", features = ["serde", "wasmbind"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

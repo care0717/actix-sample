@@ -1,18 +1,19 @@
-use actix_web::{get, post, App, HttpServer, Responder, HttpResponse};
+use actix_web::{get, post, App, HttpServer, Responder, HttpResponse, HttpRequest};
+use actix_web::web::{Json, Data};
+use actix_files as fs;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 use uuid::Uuid;
 use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
 use serde::{Serialize, Deserialize};
-use actix_web::web::{Json, Data};
 
-#[get("/health")]
+#[get("/api/health")]
 async fn hc() -> impl Responder {
     HttpResponse::Ok().body("OK")
 }
 
-#[post("/todo")]
+#[post("/api/todo")]
 async fn register_todo(req: Json<RegisterTodo>, db: Data<Pool<SqliteConnectionManager>>) -> impl Responder {
     let id = Uuid::new_v4();
     let todo = SqliteTodo {
@@ -41,18 +42,45 @@ async fn register_todo(req: Json<RegisterTodo>, db: Data<Pool<SqliteConnectionMa
         .map(|r| Todo::from(r.unwrap()))
         .collect();
 
-    HttpResponse::Ok().json(TodoList(results))
+    HttpResponse::Ok().json(results)
 }
+
+#[get("/api/todo")]
+async fn get_todos(req: HttpRequest, db: Data<Pool<SqliteConnectionManager>>) -> impl Responder {
+    let conn = db.get().unwrap();
+    let mut stmt = conn.prepare("select id, description, done, datetime from todo").unwrap();
+    let results: Vec<Todo> = stmt
+        .query_map([], |row| {
+            Ok(
+                SqliteTodo{
+                    id: row.get_unwrap(0),
+                    description: row.get_unwrap(1),
+                    done: row.get_unwrap(2),
+                    datetime: row.get_unwrap(3)
+                }
+            )
+        })
+        .unwrap()
+        .into_iter()
+        .map(|r| Todo::from(r.unwrap()))
+        .collect();
+    HttpResponse::Ok().json(results)
+}
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let manager = SqliteConnectionManager::file("test.db");
     let pool = Pool::new(manager).unwrap();
+
+
     HttpServer::new(move || {
         App::new()
             .data(pool.clone())
             .service(hc)
             .service(register_todo)
+            .service(get_todos)
+            .service(fs::Files::new("/", "./front/static").show_files_listing())
     })
         .bind("127.0.0.1:8080")?
         .run()
@@ -61,9 +89,6 @@ async fn main() -> std::io::Result<()> {
 
 #[derive(Serialize)]
 struct TaskId(Uuid);
-
-#[derive(Serialize)]
-struct TodoList(Vec<Todo>);
 
 #[derive(Serialize)]
 struct Todo {
