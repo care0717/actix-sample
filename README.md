@@ -4,7 +4,7 @@ todoリストを管理するサーバーとフロント
 ## How to use
 ```
 cargo build
-cargo run
+wasm-pack build --target web --out-name wasm --out-dir ./static/wasm ./front
 ```
 
 ## 参考
