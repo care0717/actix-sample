@@ -5,11 +5,11 @@ use yew::services::fetch::{Request, Response, FetchTask};
 use yew::format::{Json, Nothing};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize};
+use serde_json::json;
 use anyhow;
 
 #[derive(Deserialize)]
 struct Todo {
-    id: String,
     description: String,
     done: bool,
     datetime: DateTime<Utc>
@@ -18,13 +18,17 @@ struct Todo {
 struct Model {
     link: ComponentLink<Self>,
     todo_list: Vec<Todo>,
+    input_description: String,
     fetch_task: Option<FetchTask>,
     error: Option<String>
 }
 
 enum Msg {
     GetList,
-    SetList(Result<Vec<Todo>, anyhow::Error>)
+    SetList(Result<Vec<Todo>, anyhow::Error>),
+    Update(String),
+    Add,
+    Nope
 }
 
 impl Component for Model {
@@ -36,6 +40,7 @@ impl Component for Model {
         Self {
             link,
             todo_list: Vec::new(),
+            input_description: String::new(),
             fetch_task: None,
             error: None,
         }
@@ -44,7 +49,6 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::GetList => {
-
                 let request = Request::get("http://localhost:8080/api/todo").body(Nothing).expect("Could not build request.");
                 let callback = self.link
                     .callback(|response: Response<Json<Result<Vec<Todo>, anyhow::Error>>>| {
@@ -67,6 +71,25 @@ impl Component for Model {
                 }
                 true
             }
+            Msg::Update(input_description) => {
+                self.input_description = input_description;
+                true
+            }
+            Msg::Nope => {false}
+            Msg::Add => {
+                let data = &json!({"description": self.input_description});
+                let request = Request::post("http://localhost:8080/api/todo")
+                    .header("Content-Type", "application/json")
+                    .body(Json(data))
+                    .expect("Could not build request.");
+                let callback = self.link
+                    .callback(|_: Response<Json<Result<Vec<Todo>, anyhow::Error>>>| { Msg::GetList });
+
+                let task = FetchService::fetch(request, callback).expect("failed to start request.");
+                self.fetch_task = Some(task);
+                self.input_description = String::new();
+                false
+            }
         }
     }
 
@@ -75,12 +98,27 @@ impl Component for Model {
     }
 
     fn view(&self) -> Html {
-        html! {
+        html!{
          <div>
+            { self.view_input() }
             <ul>
                 { for self.todo_list.iter().map(|e| html!{<li>{e.description.clone()}</li>}) }
             </ul>
          </div>
+        }
+    }
+}
+
+impl Model {
+    fn view_input(&self) -> Html {
+        html! {
+            <input class="new-todo"
+                placeholder="What needs to be done?"
+                value=&self.input_description
+                oninput=self.link.callback(|e: InputData| Msg::Update(e.value))
+                onkeypress=self.link.callback(|e: KeyboardEvent| {
+                    if e.key() == "Enter" { Msg::Add } else { Msg::Nope }
+                }) />
         }
     }
 }
